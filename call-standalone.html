@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تماس تصویری خصوصی</title>
+<style>
+body{margin:0;font-family:system-ui,Tahoma,sans-serif;background:#141413;color:#f1f1ee}
+.wrap{max-width:480px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:12px}
+input,button{font:inherit;padding:12px;border-radius:10px;border:1px solid #777;background:#222;color:#fff}
+input{direction:ltr;text-align:center}button{background:#1a6dff;border:0}button.end{background:#d93025}
+.stage{position:relative;background:#000;border-radius:14px;overflow:hidden;min-height:320px}
+#remote{width:100%;height:100%;min-height:320px;object-fit:cover}
+#local{position:absolute;bottom:10px;left:10px;width:28%;border-radius:10px;border:2px solid #fff;transform:scaleX(-1)}
+#call{display:none;flex-direction:column;gap:10px}#st,#err{text-align:center;font-size:14px}#err{color:#ff6b60}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 style="font-size:20px">تماس تصویری خصوصی</h1>
+  <div id="join" class="wrap" style="padding:0">
+    <input id="pw" type="password" placeholder="رمز (روی هر دو گوشی یکسان)">
+    <button id="go">ورود به تماس</button>
+    <div id="err"></div>
+  </div>
+  <div id="call">
+    <div id="st">در حال اتصال…</div>
+    <div class="stage"><video id="remote" autoplay playsinline></video><video id="local" autoplay playsinline muted></video></div>
+    <button class="end" id="end">قطع</button>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+var $=function(i){return document.getElementById(i)},stream,peer;
+function st(t){$("st").textContent=t}
+function show(call){
+  call.on("stream",function(s){$("remote").srcObject=s;st("متصل شد")});
+  call.on("close",function(){st("تماس قطع شد")});
+}
+async function hash(pw){
+  var d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("vc:"+pw));
+  return Array.from(new Uint8Array(d)).map(function(b){return b.toString(16).padStart(2,"0")}).join("").slice(0,32);
+}
+function start(id,isFirst){
+  peer=new Peer(id);
+  peer.on("open",function(){
+    if(isFirst){st("منتظر گوشی دوم…");peer.on("call",function(c){c.answer(stream);show(c)})}
+    else{st("در حال زنگ زدن…");show(peer.call(id.replace(/-b$/,"-a"),stream))}
+  });
+  peer.on("error",function(e){
+    if(e.type==="unavailable-id"&&isFirst){peer.destroy();start(id.replace(/-a$/,"-b"),false)}
+    else if(e.type==="peer-unavailable"){st("گوشی دوم هنوز نیامده؛ دوباره امتحان می‌کنم…");setTimeout(function(){location.reload()},4000)}
+    else st("خطا: "+e.type);
+  });
+}
+$("go").onclick=async function(){
+  var pw=$("pw").value.trim();$("err").textContent="";
+  if(pw.length<4){$("err").textContent="رمز حداقل ۴ حرف";return}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:true})}
+  catch(e){$("err").textContent="خطا: "+e.name;return}
+  $("local").srcObject=stream;$("join").style.display="none";$("call").style.display="flex";
+  start("vc-"+await hash(pw)+"-a",true);
+};
+$("end").onclick=function(){peer&&peer.destroy();stream&&stream.getTracks().forEach(function(t){t.stop()});location.reload()};
+</script>
+</body>
+</html>
